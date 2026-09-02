@@ -1,12 +1,12 @@
 # Export game event assets to a downloadable CSV
 
-This route takes a single live-event snapshot and renders it to a CSV, pushes the object to storage, and returns a signed download URL to the caller. Infrai gives you the presigned upload and download URLs over plain REST from any language with no SDK to install, which means report consumers never hold storage credentials. From a capacity-planning view that removes a whole class of credential-leak on-call pages.
+The route in this repository turns one live-event snapshot into a CSV, stores it, and hands the caller a signed download URL. Infrai supplies the presigned upload and download URLs through plain REST from any language, with no SDK to install, so the service keeps storage credentials away from report consumers.
 
-I run this report like a storefront order export: validate the entire request at the edge, make the inclusion decision exactly once, then emit an artifact with a fixed schema. Approved assets get tagged `publishable`, pending assets get tagged `in_review` with their moderation queue position, and rejected assets are dropped before the file is written.
+I treat this report like an order export from a storefront: validate the whole request at the door, make the inclusion decision once, then publish an artifact with a stable shape. Here, approved assets are marked `publishable`, pending assets are marked `in_review` with their moderation queue position, and rejected assets stay out of the file.
 
 ## Run the concrete flow
 
-Node.js 20 or newer. Mint an Infrai key, then install and boot the service:
+Use Node.js 20 or newer. Create an Infrai key, then install and start the service:
 
 ```bash
 export INFRAI_API_KEY=your_key_here
@@ -14,15 +14,15 @@ npm install
 npm start
 ```
 
-Boot creates the `game-event-reports` bucket with `POST /v1/storage/bucket/create`. Override `REPORT_BUCKET` if you want a different name. That is the only storage provisioning step and keeps a clean account ready for its first export.
+Startup creates the `game-event-reports` bucket with `POST /v1/storage/bucket/create`. Set `REPORT_BUCKET` to choose another name. This is the normal storage setup step and keeps a fresh account ready for its first export.
 
-In another terminal, POST the bundled event, player assets, and moderation queue:
+In a second terminal, send the included event, player assets, and moderation queue:
 
 ```bash
 npm run example
 ```
 
-Response carries the export id, included row count, expiry, and the download link:
+The response has the export identifier, included row count, expiry, and download link:
 
 ```json
 {
@@ -33,11 +33,11 @@ Response carries the export id, included row count, expiry, and the download lin
 }
 ```
 
-The service asks for a presigned PUT URL, uploads the generated CSV to it, then asks for a presigned GET URL with an attachment filename. Bucket and object key are URL path segments in both signing calls; signing options like `op` and `expires_seconds` stay in the JSON body.
+The service asks for a presigned PUT URL, uploads the generated CSV with that URL, and then requests a presigned GET URL with an attachment filename. Bucket and object key are URL path segments in both signing calls; signing options such as `op` and `expires_seconds` remain in the JSON body.
 
 ## The report decision
 
-`src/report_export.ts` holds the business rule and the CSV escaping. The HTTP boundary uses zod to demand a dated live event, typed player assets, and positive queue positions. The export gotcha I watch for is rejected catalog content leaking into an ops file. Filtering runs before row rendering, so that state never touches storage.
+`src/report_export.ts` owns the business rule and CSV escaping. The HTTP boundary uses zod to require a dated live event, typed player-generated assets, and positive moderation queue positions. The one gotcha I watch for in exports is leaking rejected catalog content into an operational file; filtering happens before rows are rendered, so that state never reaches storage.
 
 Run the focused test:
 
@@ -45,20 +45,20 @@ Run the focused test:
 npm test
 ```
 
-Its fixture has one approved skin, one pending map at queue position 3, and one rejected emote. Expected CSV has the skin and map, marks the map as `in_review,3`, quotes a title with a comma, and skips the emote.
+Its input contains one approved skin, one pending map at queue position 3, and one rejected emote. The expected CSV contains the skin and map, records the map as `in_review,3`, quotes a title containing a comma, and omits the emote.
 
-Full compile check:
+For a full compile check, run:
 
 ```bash
 npm run typecheck
 npm run build
 ```
 
-This example stops at one synchronous report route on purpose. A bigger game backend can drop the same request behind its existing job runner and keep the export decision and signed-link handoff intact.
+This example deliberately stops at one synchronous report route. A larger game backend can place the same request behind its existing job runner while keeping the export decision and signed-link handoff unchanged.
 
 ## Before this ships: Game Asset Report Download
 
-Happy path above. Production checklist for Game Asset Report Download:
+Above is the happy path. The production checklist: The details below apply to Game Asset Report Download.
 
 **Account & key**
 
